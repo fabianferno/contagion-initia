@@ -8,5 +8,5 @@
   "native_feature": "auto-signing",
   "core_logic_path": "contagion/sources/attestations.move",
   "native_feature_frontend_path": "contagion-frontend/src/games/contagion/ContagionGame.tsx",
-  "demo_video_url": "https://youtu.be/REPLACE_WITH_DEMO"
+  "demo_video_url": "https://www.canva.com/design/DAHCJrlIIkU/nIzojc3egYutAX7w4VumVw/watch?utm_content=DAHCJrlIIkU&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h9eb9a29aef"
 }

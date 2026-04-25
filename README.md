@@ -14,6 +14,7 @@ turning "when did you last test?" from vibes into on-chain truth.
   (hex `0x68baf5212e783ffe39ef8919d1f1c8d0ba100ef0`)
 - **VM**: Move (`minimove`)
 - **Native Feature**: auto-signing
+- **Demo Video**: [Watch on Canva](https://www.canva.com/design/DAHCJrlIIkU/nIzojc3egYutAX7w4VumVw/watch?utm_content=DAHCJrlIIkU&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=h9eb9a29aef)
 
 ### Project Overview
 
