@@ -1692,19 +1692,145 @@ function gameTick() {
   broadcastState();
 }
 
+// ── Faucet / Balance HTTP API ────────────────────────────────────────
+
+const FAUCET_KEY_NAME = process.env.FAUCET_KEY_NAME || 'deployer';
+const FAUCET_AMOUNT = process.env.FAUCET_AMOUNT || '5000000umin';
+const FAUCET_CHAIN_ID = process.env.FAUCET_CHAIN_ID || process.env.VITE_INITIA_CHAIN_ID || 'contagion-1';
+const FAUCET_KEYRING = process.env.FAUCET_KEYRING_BACKEND || 'test';
+const FAUCET_FEES = process.env.FAUCET_FEES || '0umin';
+const FAUCET_BINARY = (() => {
+  const explicit = process.env.FAUCET_BINARY;
+  if (explicit) return explicit;
+  // Try common Go install locations so `bun run dev:server` works even when
+  // `$HOME/go/bin` isn't on the parent shell's PATH.
+  const home = process.env.HOME || '';
+  const candidates = [`${home}/go/bin/minitiad`, '/usr/local/bin/minitiad', '/opt/homebrew/bin/minitiad'];
+  const fs = require('fs') as typeof import('fs');
+  for (const p of candidates) {
+    try { if (fs.existsSync(p)) return p; } catch { /* ignore */ }
+  }
+  return 'minitiad';
+})();
+const INITIA_REST_URL = process.env.VITE_INITIA_REST_URL || process.env.INITIA_REST_URL || 'http://localhost:1317';
+
+const CORS_HEADERS: Record<string, string> = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+
+const BECH32_RE = /^init1[02-9ac-hj-np-z]{38,}$/;
+
+let faucetInFlight = false;
+
+async function runFaucet(address: string) {
+  if (!BECH32_RE.test(address)) {
+    return { ok: false as const, status: 400, error: 'Invalid bech32 address (expected init1…)' };
+  }
+  if (faucetInFlight) {
+    return { ok: false as const, status: 429, error: 'Faucet busy — try again in a moment' };
+  }
+  faucetInFlight = true;
+  try {
+    const args = [
+      'tx', 'bank', 'send',
+      FAUCET_KEY_NAME, address, FAUCET_AMOUNT,
+      '--keyring-backend', FAUCET_KEYRING,
+      '--chain-id', FAUCET_CHAIN_ID,
+      '--fees', FAUCET_FEES,
+      '--gas', 'auto',
+      '--gas-adjustment', '1.5',
+      '--broadcast-mode', 'sync',
+      '--output', 'json',
+      '-y',
+    ];
+    console.log(`[Faucet] ${FAUCET_BINARY} ${args.join(' ')}`);
+    const proc = Bun.spawn([FAUCET_BINARY, ...args], { stdout: 'pipe', stderr: 'pipe' });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    await proc.exited;
+    if (proc.exitCode !== 0) {
+      console.error('[Faucet] failed:', stderr || stdout);
+      return { ok: false as const, status: 500, error: (stderr || stdout || 'faucet failed').trim().slice(0, 500) };
+    }
+    let parsed: { txhash?: string; code?: number; raw_log?: string } = {};
+    try { parsed = JSON.parse(stdout); } catch { /* tolerated */ }
+    if (typeof parsed.code === 'number' && parsed.code !== 0) {
+      return { ok: false as const, status: 500, error: parsed.raw_log || `tx failed with code ${parsed.code}` };
+    }
+    console.log(`[Faucet] sent ${FAUCET_AMOUNT} → ${address} (tx ${parsed.txhash})`);
+    return { ok: true as const, txhash: parsed.txhash || null, amount: FAUCET_AMOUNT };
+  } finally {
+    faucetInFlight = false;
+  }
+}
+
+async function fetchBalance(address: string) {
+  const url = `${INITIA_REST_URL.replace(/\/$/, '')}/cosmos/bank/v1beta1/balances/${address}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`balance query failed: ${res.status}`);
+  return await res.json();
+}
+
 // ── Bun WebSocket Server ─────────────────────────────────────────────
 
 console.log(`[Plague Server] Starting on port ${PORT}...`);
 
 Bun.serve({
   port: PORT,
-  fetch(req, server) {
+  async fetch(req, server) {
+    const url = new URL(req.url);
+
+    if (req.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    if (url.pathname === '/api/faucet' && req.method === 'POST') {
+      try {
+        const body = (await req.json()) as { address?: string };
+        const address = (body?.address || '').trim();
+        const result = await runFaucet(address);
+        if (!result.ok) return jsonResponse({ error: result.error }, result.status);
+        return jsonResponse(result);
+      } catch (e) {
+        return jsonResponse({ error: (e as Error).message || String(e) }, 500);
+      }
+    }
+
+    if (url.pathname.startsWith('/api/balance/') && req.method === 'GET') {
+      const address = decodeURIComponent(url.pathname.slice('/api/balance/'.length));
+      if (!BECH32_RE.test(address)) return jsonResponse({ error: 'invalid address' }, 400);
+      try {
+        const data = await fetchBalance(address);
+        return jsonResponse(data);
+      } catch (e) {
+        return jsonResponse({ error: (e as Error).message || String(e) }, 502);
+      }
+    }
+
+    if (url.pathname === '/api/faucet/info' && req.method === 'GET') {
+      return jsonResponse({
+        chainId: FAUCET_CHAIN_ID,
+        amount: FAUCET_AMOUNT,
+        denom: FAUCET_AMOUNT.replace(/^\d+/, ''),
+      });
+    }
+
     // Upgrade HTTP → WebSocket
     if (server.upgrade(req)) {
       console.log('[WS] Upgrade request received');
       return undefined;
     }
-    return new Response('Plague Game Server', { status: 200 });
+    return new Response('Plague Game Server', { status: 200, headers: CORS_HEADERS });
   },
   websocket: {
     open(ws) {

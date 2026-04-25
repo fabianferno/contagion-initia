@@ -139,8 +139,7 @@ contagion-initia/
 │     └─ main.tsx                   # Wagmi → QueryClient → InterwovenKit
 ├─ .initia/submission.json          # Hackathon submission metadata
 ├─ .env.example                     # Frontend runtime config
-├─ infection-dynamics.md            # Design notes (gameplay)
-└─ newgamemechanics.md              # Expanded mechanics doc
+└─ GAME_DESIGN.md                   # Single source of truth for game design
 ```
 
 ## License

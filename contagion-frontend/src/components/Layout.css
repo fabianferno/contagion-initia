@@ -157,11 +157,9 @@
 }
 
 .studio-main {
-  max-width: 1200px;
-  margin: 0 auto;
+   margin: 0 auto;
   width: 100%;
-  padding: 0 2.5rem 3rem;
-  flex: 1;
+   flex: 1;
 }
 
 .studio-main-full {

@@ -1,9 +1,13 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { WalletButton } from './WalletButton';
+import { FaucetModal } from './FaucetModal';
 import PixelTrail from './PixelTrail';
 import logo from '@/assets/icons/android-chrome-192x192.png';
 import { INITIA_CHAIN_NAME } from '@/utils/constants';
+import { useWallet } from '@/hooks/useWallet';
+import { useBalance, LOW_BALANCE_THRESHOLD } from '@/hooks/useBalance';
 import './Layout.css';
+import './FaucetModal.css';
 
 interface LayoutProps {
   title?: string;
@@ -16,6 +20,11 @@ interface LayoutProps {
 export function Layout({ title, subtitle, variant = 'light', mainClassName, children }: LayoutProps) {
   const resolvedTitle = title || import.meta.env.VITE_GAME_TITLE || 'Contagion';
   const resolvedSubtitle = subtitle || import.meta.env.VITE_GAME_TAGLINE || 'Trust No One';
+  const { publicKey, isConnected } = useWallet();
+  const { data: balance, isLoading } = useBalance(publicKey);
+  const [faucetOpen, setFaucetOpen] = useState(false);
+
+  const isLow = isConnected && !!balance && balance.raw < LOW_BALANCE_THRESHOLD;
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', variant);
@@ -30,7 +39,7 @@ export function Layout({ title, subtitle, variant = 'light', mainClassName, chil
           trailSize={0.1}
           maxAge={250}
           interpolate={2}
-          color="#88e888"
+          color="#ff0000"
           gooeyFilter={{ id: 'custom-goo-filter', strength: 2 }}
           useGlobalMouse
         />
@@ -46,9 +55,36 @@ export function Layout({ title, subtitle, variant = 'light', mainClassName, chil
                 <p className="text-sm brand-subtitle">{resolvedSubtitle}</p>
               </div>
             </div>
+            {isLow && (
+              <div className="faucet-banner">
+                <span>⚠ Insufficient balance for fees</span>
+                <button onClick={() => setFaucetOpen(true)}>Get tokens</button>
+              </div>
+            )}
           </div>
           <div className="header-actions">
             <div className="network-pill">{INITIA_CHAIN_NAME}</div>
+            {isConnected && (
+              <button
+                type="button"
+                className={`balance-pill${isLow ? ' balance-low' : ''}`}
+                onClick={() => setFaucetOpen(true)}
+                title={isLow ? 'Low balance — open faucet' : 'Open faucet'}
+              >
+                <span className="balance-dot" />
+                {isLoading && !balance ? '…' : balance?.formatted ?? '0'}
+              </button>
+            )}
+            {isConnected && (
+              <button
+                type="button"
+                className="pixel-btn pixel-btn-secondary"
+                onClick={() => setFaucetOpen(true)}
+                style={{ padding: '8px 14px' }}
+              >
+                Faucet
+              </button>
+            )}
             <WalletButton />
           </div>
         </header>
@@ -59,6 +95,8 @@ export function Layout({ title, subtitle, variant = 'light', mainClassName, chil
           <span>Built on Initia · Interwoven Rollup</span>
         </footer>
       </div>
+
+      <FaucetModal open={faucetOpen} onClose={() => setFaucetOpen(false)} />
     </div>
   );
 }

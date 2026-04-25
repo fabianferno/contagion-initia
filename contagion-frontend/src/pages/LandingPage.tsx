@@ -51,8 +51,8 @@ export function LandingPage() {
       <section className="landing-hero">
         <div className="landing-hero-bg" />
         <h1 className="landing-hero-title">
-          <span className="line2 text-4xl">Contagion</span>
-          <span className="line1 text-2xl">Trust No One</span>
+          <span className="text-green-400 font-bold text-8xl">Contagion</span>
+          <span className="line1 text-2xl mt-2">Trust No One</span>
         </h1>
         <p className="landing-hero-sub text-white max-w-7xl mx-auto">
           A multiplayer social deduction game where infection spreads silently.

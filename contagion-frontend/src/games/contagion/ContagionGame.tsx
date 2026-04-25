@@ -288,7 +288,7 @@ export function ContagionGame({ userAddress }: ContagionGameProps) {
                   setLocalPlayerY(gridY);
                 }
               }}
-              onHealthChange={() => {/* server-authoritative */}}
+              onHealthChange={() => {/* server-authoritative */ }}
               testCamps={radarTestCamps}
               deathTrigger={socket.deathTrigger}
               buriedGems={socket.buriedGems}
