@@ -1,0 +1,12 @@
+{
+  "project_name": "Contagion",
+  "repo_url": "https://github.com/fabianferno/contagion-initia",
+  "commit_sha": "1dbd3839191ea784083a50499da00ee1c13f3962",
+  "rollup_chain_id": "contagion-1",
+  "deployed_address": "init1dza02gfw0qlluw003yvaruwg6zapqrhsvrsdvy",
+  "vm": "move",
+  "native_feature": "auto-signing",
+  "core_logic_path": "contagion/sources/attestations.move",
+  "native_feature_frontend_path": "contagion-frontend/src/games/contagion/ContagionGame.tsx",
+  "demo_video_url": "https://youtu.be/REPLACE_WITH_DEMO"
+}
