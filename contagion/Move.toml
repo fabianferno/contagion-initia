@@ -1,0 +1,20 @@
+[package]
+name = "contagion"
+version = "0.1.0"
+
+[addresses]
+contagion = "_"
+std = "0x1"
+
+[dev-addresses]
+contagion = "0xCAFE"
+
+[dependencies.MoveStdlib]
+git = "https://github.com/initia-labs/movevm.git"
+subdir = "precompile/modules/move_stdlib"
+rev = "main"
+
+[dependencies.InitiaStdlib]
+git = "https://github.com/initia-labs/movevm.git"
+subdir = "precompile/modules/initia_stdlib"
+rev = "main"
