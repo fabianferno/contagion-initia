@@ -8,7 +8,7 @@
  */
 
 import { createHash } from 'crypto';
-import { RESTClient, MnemonicKey, MsgSend, Wallet, type Coins } from '@initia/initia.js';
+import { RESTClient, MnemonicKey, RawKey, MsgSend, Wallet, type Coins } from '@initia/initia.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -1700,6 +1700,7 @@ const FAUCET_CHAIN_ID = process.env.FAUCET_CHAIN_ID || process.env.VITE_INITIA_C
 const FAUCET_GAS_PRICES = process.env.FAUCET_GAS_PRICES || '0.015umin';
 const FAUCET_GAS_ADJUSTMENT = process.env.FAUCET_GAS_ADJUSTMENT || '1.5';
 const FAUCET_MNEMONIC = process.env.FAUCET_MNEMONIC || '';
+const FAUCET_PRIVATE_KEY = process.env.FAUCET_PRIVATE_KEY || ''; // raw hex (no 0x), eth secp256k1
 const PUBLIC_FAUCET_URL = process.env.VITE_PUBLIC_FAUCET_URL || process.env.PUBLIC_FAUCET_URL || '';
 const INITIA_REST_URL = process.env.VITE_INITIA_REST_URL || process.env.INITIA_REST_URL || 'http://localhost:1317';
 
@@ -1707,14 +1708,17 @@ let faucetRest: RESTClient | null = null;
 let faucetWallet: Wallet | null = null;
 
 function getFaucetWallet(): Wallet | null {
-  if (!FAUCET_MNEMONIC) return null;
+  if (!FAUCET_MNEMONIC && !FAUCET_PRIVATE_KEY) return null;
   if (faucetWallet) return faucetWallet;
   faucetRest = new RESTClient(INITIA_REST_URL, {
     chainId: FAUCET_CHAIN_ID,
     gasPrices: FAUCET_GAS_PRICES as Coins.Input,
     gasAdjustment: FAUCET_GAS_ADJUSTMENT,
   });
-  faucetWallet = faucetRest.wallet(new MnemonicKey({ mnemonic: FAUCET_MNEMONIC }));
+  const key = FAUCET_PRIVATE_KEY
+    ? new RawKey(Buffer.from(FAUCET_PRIVATE_KEY.replace(/^0x/, ''), 'hex'), true)
+    : new MnemonicKey({ mnemonic: FAUCET_MNEMONIC });
+  faucetWallet = faucetRest.wallet(key);
   console.log(`[Faucet] ready, sender ${faucetWallet.key.accAddress}`);
   return faucetWallet;
 }
@@ -1832,7 +1836,7 @@ Bun.serve({
         chainId: FAUCET_CHAIN_ID,
         amount: FAUCET_AMOUNT,
         denom: FAUCET_AMOUNT.replace(/^\d+/, ''),
-        enabled: Boolean(FAUCET_MNEMONIC),
+        enabled: Boolean(FAUCET_MNEMONIC || FAUCET_PRIVATE_KEY),
         publicFaucetUrl: PUBLIC_FAUCET_URL || null,
       });
     }
