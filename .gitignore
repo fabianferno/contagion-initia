@@ -1,6 +1,9 @@
 node_modules/
 dist/
 dist-node/
+# contagion-frontend/dist is intentionally tracked — built locally, deployed via git pull on EC2
+!contagion-frontend/dist/
+!contagion-frontend/dist/**
 .DS_Store
 .env
 *.tsbuildinfo
