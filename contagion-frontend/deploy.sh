@@ -1,50 +1,42 @@
 #!/usr/bin/env bash
-# Build the Vite client locally and rsync ./dist to an EC2 host.
+# Run on the EC2 host itself. Pulls latest, builds the client (with a
+# bumped Node heap so micro instances don't OOM), then restarts the pm2
+# WebSocket server.
 #
-# Configure once via env vars (export them in your shell or a .env.deploy):
-#   DEPLOY_HOST       e.g. ec2-user@1.2.3.4   (required)
-#   DEPLOY_REMOTE_DIR remote path that holds dist/  (default: ~/projects/contagion-initia/contagion-frontend)
-#   DEPLOY_SSH_KEY    optional path to an ssh private key
-#   PM2_RESTART       set to "1" to restart the contagion-server pm2 process after deploy
+# One-time prereqs on the box:
+#   - bun installed (curl -fsSL https://bun.sh/install | bash)
+#   - pm2 installed (npm i -g pm2)
+#   - 4G swap enabled if RAM < 2G (see README of this script)
+#   - .env present at repo root (vite.config.ts has envDir: '..')
 #
 # Usage:
+#   cd ~/projects/contagion-initia/contagion-frontend
 #   ./deploy.sh
-#   DEPLOY_HOST=ec2-user@1.2.3.4 PM2_RESTART=1 ./deploy.sh
 
 set -euo pipefail
 
 cd "$(dirname "$0")"
+REPO_ROOT="$(cd .. && pwd)"
 
-if [[ -f ../.env.deploy ]]; then
-  # shellcheck disable=SC1091
-  source ../.env.deploy
-fi
+echo "==> git pull"
+git -C "$REPO_ROOT" pull --ff-only
 
-: "${DEPLOY_HOST:?DEPLOY_HOST is required, e.g. ec2-user@1.2.3.4}"
-DEPLOY_REMOTE_DIR="${DEPLOY_REMOTE_DIR:-~/projects/contagion-initia/contagion-frontend}"
-
-SSH_OPTS=()
-if [[ -n "${DEPLOY_SSH_KEY:-}" ]]; then
-  SSH_OPTS=(-i "$DEPLOY_SSH_KEY")
-fi
-
-echo "==> Installing deps"
+echo "==> bun install"
 bun install
 
-echo "==> Building client (vite build)"
-bun run build
+echo "==> vite build (heap bumped to 3GB)"
+NODE_OPTIONS="--max-old-space-size=3072" bun run build
 
-echo "==> Ensuring remote dir exists: $DEPLOY_HOST:$DEPLOY_REMOTE_DIR/dist"
-ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "mkdir -p $DEPLOY_REMOTE_DIR/dist"
+mkdir -p logs
 
-echo "==> Rsyncing dist/"
-rsync -avz --delete \
-  ${DEPLOY_SSH_KEY:+-e "ssh -i $DEPLOY_SSH_KEY"} \
-  dist/ "$DEPLOY_HOST:$DEPLOY_REMOTE_DIR/dist/"
-
-if [[ "${PM2_RESTART:-0}" == "1" ]]; then
-  echo "==> Restarting pm2 process: contagion-server"
-  ssh "${SSH_OPTS[@]}" "$DEPLOY_HOST" "pm2 restart contagion-server || true"
+if pm2 describe contagion-server >/dev/null 2>&1; then
+  echo "==> pm2 reload contagion-server"
+  pm2 reload ecosystem.config.cjs --update-env
+else
+  echo "==> pm2 start ecosystem.config.cjs"
+  pm2 start ecosystem.config.cjs
+  pm2 save
 fi
 
-echo "==> Done. Static build is live at $DEPLOY_HOST:$DEPLOY_REMOTE_DIR/dist"
+pm2 status contagion-server
+echo "==> Done."
