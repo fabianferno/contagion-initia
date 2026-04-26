@@ -124,6 +124,34 @@
   border-radius: 4px;
 }
 
+.faucet-fallback {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed rgba(200, 70, 59, 0.3);
+}
+.faucet-fallback-title {
+  font-size: 0.72rem;
+  color: #8c2a22;
+  margin-bottom: 0.45rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: inherit;
+}
+.faucet-fallback-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.faucet-fallback-btn {
+  flex: 1 1 auto;
+  font-size: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  text-decoration: none;
+  text-align: center;
+}
+[data-theme="dark"] .faucet-fallback-title { color: #ff9b91; }
+[data-theme="dark"] .faucet-fallback { border-top-color: rgba(255, 120, 100, 0.35); }
+
 .faucet-modal-actions {
   display: flex;
   justify-content: flex-end;

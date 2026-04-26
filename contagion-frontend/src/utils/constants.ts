@@ -49,3 +49,6 @@ export const CONTAGION_WS_URL =
   (typeof window !== 'undefined'
     ? `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`
     : 'ws://localhost:3001');
+
+/** External faucet shown as a fallback if the in-app faucet fails. */
+export const PUBLIC_FAUCET_URL = env.VITE_PUBLIC_FAUCET_URL || '';

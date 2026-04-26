@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/hooks/useWallet';
-import { INITIA_CHAIN_NAME, INITIA_NATIVE_ASSET } from '@/utils/constants';
+import { INITIA_CHAIN_NAME, INITIA_NATIVE_ASSET, PUBLIC_FAUCET_URL } from '@/utils/constants';
 import './FaucetModal.css';
 
 interface FaucetModalProps {
@@ -17,12 +17,16 @@ export function FaucetModal({ open, onClose }: FaucetModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<FaucetSuccess | null>(null);
+  const [errorPublicFaucet, setErrorPublicFaucet] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!open) {
       setError(null);
       setSuccess(null);
       setSubmitting(false);
+      setErrorPublicFaucet(null);
+      setCopied(false);
     }
   }, [open]);
 
@@ -40,6 +44,7 @@ export function FaucetModal({ open, onClose }: FaucetModalProps) {
     setSubmitting(true);
     setError(null);
     setSuccess(null);
+    setErrorPublicFaucet(null);
     try {
       const res = await fetch('/api/faucet', {
         method: 'POST',
@@ -47,15 +52,29 @@ export function FaucetModal({ open, onClose }: FaucetModalProps) {
         body: JSON.stringify({ address: publicKey }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || `faucet failed (${res.status})`);
+      if (!res.ok) {
+        setErrorPublicFaucet(data?.publicFaucetUrl || PUBLIC_FAUCET_URL || null);
+        throw new Error(data?.error || `faucet failed (${res.status})`);
+      }
       setSuccess({ txhash: data.txhash ?? null, amount: data.amount ?? '' });
       queryClient.invalidateQueries({ queryKey: ['balance', publicKey] });
-      // Light refresh delay so the chain has time to settle.
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ['balance', publicKey] }), 1500);
     } catch (e) {
       setError((e as Error).message || 'faucet failed');
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleCopyAddress() {
+    if (!publicKey) return;
+    try {
+      await navigator.clipboard.writeText(publicKey);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // fallback: select via prompt
+      window.prompt('Copy your address:', publicKey);
     }
   }
 
@@ -94,7 +113,33 @@ export function FaucetModal({ open, onClose }: FaucetModalProps) {
             {publicKey ?? <span style={{ opacity: 0.5 }}>connect a wallet first</span>}
           </div>
 
-          {error && <div className="faucet-alert faucet-alert-error">{error}</div>}
+          {error && (
+            <div className="faucet-alert faucet-alert-error">
+              <div>{error}</div>
+              {(errorPublicFaucet || PUBLIC_FAUCET_URL) && publicKey && (
+                <div className="faucet-fallback">
+                  <div className="faucet-fallback-title">Try the public faucet:</div>
+                  <div className="faucet-fallback-actions">
+                    <button
+                      type="button"
+                      className="pixel-btn pixel-btn-secondary faucet-fallback-btn"
+                      onClick={handleCopyAddress}
+                    >
+                      {copied ? 'Copied ✓' : 'Copy address'}
+                    </button>
+                    <a
+                      className="pixel-btn pixel-btn-green faucet-fallback-btn"
+                      href={errorPublicFaucet || PUBLIC_FAUCET_URL}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      Open faucet ↗
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {success && (
             <div className="faucet-alert faucet-alert-success">

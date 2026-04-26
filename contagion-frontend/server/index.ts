@@ -8,6 +8,7 @@
  */
 
 import { createHash } from 'crypto';
+import { RESTClient, MnemonicKey, MsgSend, Wallet, type Coins } from '@initia/initia.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -1694,25 +1695,29 @@ function gameTick() {
 
 // ── Faucet / Balance HTTP API ────────────────────────────────────────
 
-const FAUCET_KEY_NAME = process.env.FAUCET_KEY_NAME || 'deployer';
 const FAUCET_AMOUNT = process.env.FAUCET_AMOUNT || '5000000umin';
 const FAUCET_CHAIN_ID = process.env.FAUCET_CHAIN_ID || process.env.VITE_INITIA_CHAIN_ID || 'contagion-1';
-const FAUCET_KEYRING = process.env.FAUCET_KEYRING_BACKEND || 'test';
-const FAUCET_FEES = process.env.FAUCET_FEES || '0umin';
-const FAUCET_BINARY = (() => {
-  const explicit = process.env.FAUCET_BINARY;
-  if (explicit) return explicit;
-  // Try common Go install locations so `bun run dev:server` works even when
-  // `$HOME/go/bin` isn't on the parent shell's PATH.
-  const home = process.env.HOME || '';
-  const candidates = [`${home}/go/bin/minitiad`, '/usr/local/bin/minitiad', '/opt/homebrew/bin/minitiad'];
-  const fs = require('fs') as typeof import('fs');
-  for (const p of candidates) {
-    try { if (fs.existsSync(p)) return p; } catch { /* ignore */ }
-  }
-  return 'minitiad';
-})();
+const FAUCET_GAS_PRICES = process.env.FAUCET_GAS_PRICES || '0.015umin';
+const FAUCET_GAS_ADJUSTMENT = process.env.FAUCET_GAS_ADJUSTMENT || '1.5';
+const FAUCET_MNEMONIC = process.env.FAUCET_MNEMONIC || '';
+const PUBLIC_FAUCET_URL = process.env.VITE_PUBLIC_FAUCET_URL || process.env.PUBLIC_FAUCET_URL || '';
 const INITIA_REST_URL = process.env.VITE_INITIA_REST_URL || process.env.INITIA_REST_URL || 'http://localhost:1317';
+
+let faucetRest: RESTClient | null = null;
+let faucetWallet: Wallet | null = null;
+
+function getFaucetWallet(): Wallet | null {
+  if (!FAUCET_MNEMONIC) return null;
+  if (faucetWallet) return faucetWallet;
+  faucetRest = new RESTClient(INITIA_REST_URL, {
+    chainId: FAUCET_CHAIN_ID,
+    gasPrices: FAUCET_GAS_PRICES as Coins.Input,
+    gasAdjustment: FAUCET_GAS_ADJUSTMENT,
+  });
+  faucetWallet = faucetRest.wallet(new MnemonicKey({ mnemonic: FAUCET_MNEMONIC }));
+  console.log(`[Faucet] ready, sender ${faucetWallet.key.accAddress}`);
+  return faucetWallet;
+}
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -1732,43 +1737,48 @@ let faucetInFlight = false;
 
 async function runFaucet(address: string) {
   if (!BECH32_RE.test(address)) {
-    return { ok: false as const, status: 400, error: 'Invalid bech32 address (expected init1…)' };
+    return { ok: false as const, status: 400, error: 'Invalid bech32 address (expected init1…)', publicFaucetUrl: PUBLIC_FAUCET_URL || null };
+  }
+  const wallet = getFaucetWallet();
+  if (!wallet || !faucetRest) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: 'In-app faucet is not configured on this server. Use the public faucet below.',
+      publicFaucetUrl: PUBLIC_FAUCET_URL || null,
+    };
   }
   if (faucetInFlight) {
-    return { ok: false as const, status: 429, error: 'Faucet busy — try again in a moment' };
+    return { ok: false as const, status: 429, error: 'Faucet busy — try again in a moment', publicFaucetUrl: PUBLIC_FAUCET_URL || null };
   }
   faucetInFlight = true;
   try {
-    const args = [
-      'tx', 'bank', 'send',
-      FAUCET_KEY_NAME, address, FAUCET_AMOUNT,
-      '--keyring-backend', FAUCET_KEYRING,
-      '--chain-id', FAUCET_CHAIN_ID,
-      '--fees', FAUCET_FEES,
-      '--gas', 'auto',
-      '--gas-adjustment', '1.5',
-      '--broadcast-mode', 'sync',
-      '--output', 'json',
-      '-y',
-    ];
-    console.log(`[Faucet] ${FAUCET_BINARY} ${args.join(' ')}`);
-    const proc = Bun.spawn([FAUCET_BINARY, ...args], { stdout: 'pipe', stderr: 'pipe' });
-    const [stdout, stderr] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    await proc.exited;
-    if (proc.exitCode !== 0) {
-      console.error('[Faucet] failed:', stderr || stdout);
-      return { ok: false as const, status: 500, error: (stderr || stdout || 'faucet failed').trim().slice(0, 500) };
+    const sender = wallet.key.accAddress;
+    const msg = new MsgSend(sender, address, FAUCET_AMOUNT);
+    const signedTx = await wallet.createAndSignTx({ msgs: [msg] });
+    const result = await faucetRest.tx.broadcastSync(signedTx);
+    const code = (result as { code?: number | string }).code;
+    if (code !== undefined && Number(code) !== 0) {
+      const rawLog = (result as { raw_log?: string }).raw_log;
+      console.error('[Faucet] tx failed:', rawLog || code);
+      return {
+        ok: false as const,
+        status: 500,
+        error: rawLog || `tx failed with code ${code}`,
+        publicFaucetUrl: PUBLIC_FAUCET_URL || null,
+      };
     }
-    let parsed: { txhash?: string; code?: number; raw_log?: string } = {};
-    try { parsed = JSON.parse(stdout); } catch { /* tolerated */ }
-    if (typeof parsed.code === 'number' && parsed.code !== 0) {
-      return { ok: false as const, status: 500, error: parsed.raw_log || `tx failed with code ${parsed.code}` };
-    }
-    console.log(`[Faucet] sent ${FAUCET_AMOUNT} → ${address} (tx ${parsed.txhash})`);
-    return { ok: true as const, txhash: parsed.txhash || null, amount: FAUCET_AMOUNT };
+    console.log(`[Faucet] sent ${FAUCET_AMOUNT} → ${address} (tx ${result.txhash})`);
+    return { ok: true as const, txhash: result.txhash, amount: FAUCET_AMOUNT };
+  } catch (e) {
+    const msg = (e as Error).message || String(e);
+    console.error('[Faucet] error:', msg);
+    return {
+      ok: false as const,
+      status: 500,
+      error: msg.slice(0, 500),
+      publicFaucetUrl: PUBLIC_FAUCET_URL || null,
+    };
   } finally {
     faucetInFlight = false;
   }
@@ -1822,6 +1832,8 @@ Bun.serve({
         chainId: FAUCET_CHAIN_ID,
         amount: FAUCET_AMOUNT,
         denom: FAUCET_AMOUNT.replace(/^\d+/, ''),
+        enabled: Boolean(FAUCET_MNEMONIC),
+        publicFaucetUrl: PUBLIC_FAUCET_URL || null,
       });
     }
 
