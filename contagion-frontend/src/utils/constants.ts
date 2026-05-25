@@ -52,3 +52,12 @@ export const CONTAGION_WS_URL =
 
 /** External faucet shown as a fallback if the in-app faucet fails. */
 export const PUBLIC_FAUCET_URL = env.VITE_PUBLIC_FAUCET_URL || '';
+
+/**
+ * Base URL for the game server's HTTP API (/api/faucet, /api/balance).
+ * Empty = same-origin (dev uses the Vite proxy → :3001). When the client
+ * is hosted separately (e.g. Vercel) point this at the backend, e.g.
+ * https://contagion.crevn.xyz — the server sends permissive CORS headers.
+ * No trailing slash.
+ */
+export const CONTAGION_API_BASE = (env.VITE_CONTAGION_API_URL || '').replace(/\/$/, '');

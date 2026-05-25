@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run on your laptop. Builds the Vite client locally and pushes the
 # resulting dist/ to git so the EC2 box can deploy via `./deploy.sh`
-# (git pull + pm2 reload), no build step on the server.
+# (git pull + pnpm install + pm2 reload), no build step on the server.
 #
 # Usage:
 #   cd contagion-frontend
@@ -12,11 +12,11 @@ set -euo pipefail
 cd "$(dirname "$0")"
 REPO_ROOT="$(cd .. && pwd)"
 
-echo "==> bun install"
-bun install
+echo "==> pnpm install"
+pnpm install
 
-echo "==> bun run build"
-bun run build
+echo "==> pnpm run build"
+pnpm run build
 
 if [[ ! -f dist/index.html ]]; then
   echo "ERROR: build did not produce dist/index.html" >&2

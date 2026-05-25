@@ -3,15 +3,29 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "packageManager": "pnpm@10.24.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "keccak",
+      "secp256k1",
+      "bufferutil",
+      "utf-8-validate"
+    ]
+  },
   "scripts": {
     "dev": "vite",
-    "dev:server": "bun run server/index.ts",
+    "dev:server": "tsx watch server/index.ts",
+    "start:server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@initia/initia.js": "^1.0.8",
+    "dotenv": "^16.4.7",
+    "tsx": "^4.20.6",
+    "ws": "^8.18.0",
     "@initia/interwovenkit-react": "^2.5.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
@@ -34,6 +48,7 @@
     "@tailwindcss/postcss": "^4.1.17",
     "@types/node": "^24.10.2",
     "@types/react": "^19.2.7",
+    "@types/ws": "^8.5.13",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^5.1.2",

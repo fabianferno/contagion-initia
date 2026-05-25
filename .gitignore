@@ -1,11 +1,12 @@
 node_modules/
 dist/
 dist-node/
-# contagion-frontend/dist is intentionally tracked — built locally, deployed via git pull on EC2
-!contagion-frontend/dist/
-!contagion-frontend/dist/**
+# Client is built & hosted on Vercel; EC2 runs the server only. No need to
+# track the built dist/ in git anymore.
 .DS_Store
 .env
+.env.local-backup
+contagion-frontend/logs/
 *.tsbuildinfo
 contagion/build/
 .claude/

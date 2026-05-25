@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { INITIA_GAS_DENOM, INITIA_NATIVE_ASSET } from '@/utils/constants';
+import { CONTAGION_API_BASE, INITIA_GAS_DENOM, INITIA_NATIVE_ASSET } from '@/utils/constants';
 
 interface CoinAmount { denom: string; amount: string }
 interface BalancesResponse { balances?: CoinAmount[] }
@@ -43,7 +43,7 @@ export function useBalance(address: string | null) {
     staleTime: 3000,
     queryFn: async () => {
       if (!address) return ZERO;
-      const res = await fetch(`/api/balance/${address}`);
+      const res = await fetch(`${CONTAGION_API_BASE}/api/balance/${address}`);
       if (!res.ok) throw new Error(`balance ${res.status}`);
       const data = (await res.json()) as BalancesResponse;
       const coin = data.balances?.find(c => c.denom === INITIA_GAS_DENOM);

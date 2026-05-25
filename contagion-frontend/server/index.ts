@@ -1,14 +1,26 @@
 /**
- * Contagion Game — WebSocket Server (Bun)
+ * Contagion Game — WebSocket Server (Node: http + ws)
  *
  * Manages real-time multiplayer: position sync, infection spread,
  * cure fragments, self-testing, proof flashing, accusations & voting.
  *
- * Run: bun run contagion-frontend/server/index.ts
+ * Run: tsx server/index.ts   (or: pnpm dev:server)
  */
 
 import { createHash } from 'crypto';
+import { createServer, type IncomingMessage, type ServerResponse } from 'http';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+import { config as loadEnv } from 'dotenv';
+import { WebSocketServer } from 'ws';
 import { RESTClient, MnemonicKey, RawKey, MsgSend, Wallet, type Coins } from '@initia/initia.js';
+
+// Bun auto-loads .env; Node does not. Load the repo-root .env explicitly
+// (server/index.ts → ../../.env), independent of cwd. Falls back to a cwd
+// .env too. Must run before any process.env reads below.
+const __dirname = dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: resolve(__dirname, '../../.env') });
+loadEnv();
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -1729,12 +1741,6 @@ const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
-const jsonResponse = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-  });
-
 const BECH32_RE = /^init1[02-9ac-hj-np-z]{38,}$/;
 
 let faucetInFlight = false;
@@ -1795,78 +1801,104 @@ async function fetchBalance(address: string) {
   return await res.json();
 }
 
-// ── Bun WebSocket Server ─────────────────────────────────────────────
+// ── HTTP + WebSocket Server (Node: http + ws) ────────────────────────
 
 console.log(`[Plague Server] Starting on port ${PORT}...`);
 
-Bun.serve({
-  port: PORT,
-  async fetch(req, server) {
-    const url = new URL(req.url);
+function sendJson(res: ServerResponse, body: unknown, status = 200) {
+  res.writeHead(status, { ...CORS_HEADERS, 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
 
-    if (req.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
-    }
+async function readBody(req: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString('utf8');
+}
 
-    if (url.pathname === '/api/faucet' && req.method === 'POST') {
-      try {
-        const body = (await req.json()) as { address?: string };
-        const address = (body?.address || '').trim();
-        const result = await runFaucet(address);
-        if (!result.ok) return jsonResponse({ error: result.error }, result.status);
-        return jsonResponse(result);
-      } catch (e) {
-        return jsonResponse({ error: (e as Error).message || String(e) }, 500);
-      }
-    }
+const httpServer = createServer(async (req, res) => {
+  const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
 
-    if (url.pathname.startsWith('/api/balance/') && req.method === 'GET') {
-      const address = decodeURIComponent(url.pathname.slice('/api/balance/'.length));
-      if (!BECH32_RE.test(address)) return jsonResponse({ error: 'invalid address' }, 400);
-      try {
-        const data = await fetchBalance(address);
-        return jsonResponse(data);
-      } catch (e) {
-        return jsonResponse({ error: (e as Error).message || String(e) }, 502);
-      }
-    }
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, CORS_HEADERS);
+    res.end();
+    return;
+  }
 
-    if (url.pathname === '/api/faucet/info' && req.method === 'GET') {
-      return jsonResponse({
-        chainId: FAUCET_CHAIN_ID,
-        amount: FAUCET_AMOUNT,
-        denom: FAUCET_AMOUNT.replace(/^\d+/, ''),
-        enabled: Boolean(FAUCET_MNEMONIC || FAUCET_PRIVATE_KEY),
-        publicFaucetUrl: PUBLIC_FAUCET_URL || null,
-      });
+  if (url.pathname === '/api/faucet' && req.method === 'POST') {
+    try {
+      const raw = await readBody(req);
+      const body = (raw ? JSON.parse(raw) : {}) as { address?: string };
+      const address = (body?.address || '').trim();
+      const result = await runFaucet(address);
+      if (!result.ok) return sendJson(res, { error: result.error }, result.status);
+      return sendJson(res, result);
+    } catch (e) {
+      return sendJson(res, { error: (e as Error).message || String(e) }, 500);
     }
+  }
 
-    // Upgrade HTTP → WebSocket
-    if (server.upgrade(req)) {
-      console.log('[WS] Upgrade request received');
-      return undefined;
+  if (url.pathname.startsWith('/api/balance/') && req.method === 'GET') {
+    const address = decodeURIComponent(url.pathname.slice('/api/balance/'.length));
+    if (!BECH32_RE.test(address)) return sendJson(res, { error: 'invalid address' }, 400);
+    try {
+      const data = await fetchBalance(address);
+      return sendJson(res, data);
+    } catch (e) {
+      return sendJson(res, { error: (e as Error).message || String(e) }, 502);
     }
-    return new Response('Plague Game Server', { status: 200, headers: CORS_HEADERS });
-  },
-  websocket: {
-    open(ws) {
-      console.log('[WS] Connection opened');
-    },
-    message(ws, message) {
-      handleMessage(ws, typeof message === 'string' ? message : new TextDecoder().decode(message as ArrayBuffer));
-    },
-    close(ws) {
-      const playerId = wsToPlayer.get(ws);
-      if (playerId) {
-        console.log(`[WS] ${players.get(playerId)?.name ?? playerId} disconnected`);
-        // Don't remove player immediately — allow reconnect
-        wsToPlayer.delete(ws);
-      }
-    },
-  },
+  }
+
+  if (url.pathname === '/api/faucet/info' && req.method === 'GET') {
+    return sendJson(res, {
+      chainId: FAUCET_CHAIN_ID,
+      amount: FAUCET_AMOUNT,
+      denom: FAUCET_AMOUNT.replace(/^\d+/, ''),
+      enabled: Boolean(FAUCET_MNEMONIC || FAUCET_PRIVATE_KEY),
+      publicFaucetUrl: PUBLIC_FAUCET_URL || null,
+    });
+  }
+
+  res.writeHead(200, CORS_HEADERS);
+  res.end('Plague Game Server');
+});
+
+// WebSocket upgrades on any path (client connects to /ws)
+const wss = new WebSocketServer({ server: httpServer });
+
+wss.on('connection', (ws) => {
+  console.log('[WS] Connection opened');
+
+  ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+    const text = Array.isArray(data)
+      ? Buffer.concat(data).toString('utf8')
+      : Buffer.isBuffer(data)
+        ? data.toString('utf8')
+        : Buffer.from(data as ArrayBuffer).toString('utf8');
+    // A single bad message must not crash the process (Node propagates
+    // listener throws to uncaughtException; Bun isolated them per-callback).
+    try {
+      handleMessage(ws, text);
+    } catch (err) {
+      console.error('[WS] handleMessage error:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    const playerId = wsToPlayer.get(ws);
+    if (playerId) {
+      console.log(`[WS] ${players.get(playerId)?.name ?? playerId} disconnected`);
+      // Don't remove player immediately — allow reconnect
+      wsToPlayer.delete(ws);
+    }
+  });
+
+  ws.on('error', (err) => console.error('[WS] socket error:', err));
+});
+
+httpServer.listen(PORT, () => {
+  console.log(`[Plague Server] Running at ws://localhost:${PORT}`);
 });
 
 // Start tick loop
 setInterval(gameTick, TICK_MS);
-
-console.log(`[Plague Server] Running at ws://localhost:${PORT}`);

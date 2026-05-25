@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWallet } from '@/hooks/useWallet';
-import { INITIA_CHAIN_NAME, INITIA_NATIVE_ASSET, PUBLIC_FAUCET_URL } from '@/utils/constants';
+import { CONTAGION_API_BASE, INITIA_CHAIN_NAME, INITIA_NATIVE_ASSET, PUBLIC_FAUCET_URL } from '@/utils/constants';
 import './FaucetModal.css';
 
 interface FaucetModalProps {
@@ -46,7 +46,7 @@ export function FaucetModal({ open, onClose }: FaucetModalProps) {
     setSuccess(null);
     setErrorPublicFaucet(null);
     try {
-      const res = await fetch('/api/faucet', {
+      const res = await fetch(`${CONTAGION_API_BASE}/api/faucet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ address: publicKey }),

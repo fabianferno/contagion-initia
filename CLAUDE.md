@@ -7,8 +7,9 @@ navigating the repo.
 ## Repo Map
 - `contagion/` — Move package (published to the appchain)
   - `sources/attestations.move` — the submission's core logic
-- `contagion-frontend/` — Vite + React + Bun game server
-  - `server/index.ts` — WebSocket server for real-time gameplay
+- `contagion-frontend/` — Vite + React client + Node game server
+  - `server/index.ts` — Node `http` + `ws` server for real-time gameplay
+    (run via tsx; loads repo-root `.env` through dotenv)
   - `src/games/contagion/` — isometric game UI, socket hook, attestation helper
   - `src/hooks/useWallet.ts` — InterwovenKit adapter
   - `src/main.tsx` — Wagmi → QueryClient → InterwovenKitProvider stack
@@ -21,24 +22,27 @@ navigating the repo.
   prompts mid-play.
 - Health attestations must encode `(session_id, tick, status, commitment)`
   as a Move `MsgExecute` against `contagion::attestations::record_attestation`.
-- The Bun WebSocket server is authoritative for infection state and tick;
+- The Node WebSocket server is authoritative for infection state and tick;
   the chain only stores signed attestations, never raw game state.
 - Use `initiaAddress` (bech32) as the `sender` for every Move message; hex
   addresses are for the EVM world.
 
 ## Common Commands
 ```bash
-# Frontend
+# Frontend (Node + pnpm; the server is TypeScript run via tsx, not Bun)
 cd contagion-frontend
-bun install
-bun run dev:server            # game server on :3001
-bun run dev                   # Vite client on :3000
-bun run build                 # production build
-bunx tsc --noEmit             # type-check
+pnpm install                  # uses node-linker=hoisted (see .npmrc)
+pnpm run dev:server           # game server on :3001 (tsx watch)
+pnpm run dev                  # Vite client on :3000
+pnpm run build                # production build
+pnpm exec tsc --noEmit        # type-check
 
-# Move contract (requires minitiad on PATH)
+# Move contract (requires minitiad v1.0.7 on PATH)
 cd contagion
-minitiad move build --named-addresses contagion=0x<deployer_hex>
+# --language-version 2.1 is REQUIRED: the main-pinned InitiaStdlib deps use
+# Move 2.1 syntax (+=, -=) and the v1.0.7 compiler defaults to 2.0.
+minitiad move build --named-addresses contagion=0x<deployer_hex> \
+  --language-version 2.1 --skip-fetch-latest-git-deps
 minitiad tx move publish build/contagion/bytecode_modules/attestations.mv \
   --from <key> --keyring-backend test --chain-id <rollup> --broadcast-mode sync
 ```

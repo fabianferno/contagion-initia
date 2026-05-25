@@ -2,7 +2,7 @@
   "project_name": "Contagion",
   "repo_url": "https://github.com/fabianferno/contagion-initia",
   "commit_sha": "1dbd3839191ea784083a50499da00ee1c13f3962",
-  "rollup_chain_id": "contagion-1",
+  "rollup_chain_id": "move-1",
   "deployed_address": "init1dza02gfw0qlluw003yvaruwg6zapqrhsvrsdvy",
   "vm": "move",
   "native_feature": "auto-signing",
