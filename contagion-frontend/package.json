@@ -11,7 +11,10 @@
       "secp256k1",
       "bufferutil",
       "utf-8-validate"
-    ]
+    ],
+    "overrides": {
+      "ky": "1.14.3"
+    }
   },
   "scripts": {
     "dev": "vite",
@@ -24,6 +27,7 @@
   "dependencies": {
     "@initia/initia.js": "^1.0.8",
     "dotenv": "^16.4.7",
+    "ky": "1.14.3",
     "tsx": "^4.20.6",
     "ws": "^8.18.0",
     "@initia/interwovenkit-react": "^2.5.0",
